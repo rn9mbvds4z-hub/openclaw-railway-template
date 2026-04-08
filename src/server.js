@@ -148,6 +148,26 @@ function isConfigured() {
   }
 }
 
+async function syncGatewayBind() {
+  const current = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["config", "get", "gateway.bind"]),
+  );
+  if (current.code === 0 && current.output.trim() === "loopback") {
+    return;
+  }
+
+  const result = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["config", "set", "gateway.bind", "loopback"]),
+  );
+  if (result.code === 0) {
+    log.info("gateway", "set gateway.bind to loopback");
+  } else {
+    log.warn("gateway", `failed to set gateway.bind (exit=${result.code})`);
+  }
+}
+
 async function syncAllowedOrigins() {
   const publicDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
   if (!publicDomain) return;
@@ -321,6 +341,7 @@ async function ensureGatewayRunning() {
   }
   if (!gatewayStarting) {
     gatewayStarting = (async () => {
+      await syncGatewayBind();
       await syncAllowedOrigins();
       await startGateway();
       const ready = await waitForGatewayReady({ timeoutMs: 60_000 });
@@ -943,6 +964,12 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         ]),
       );
       extra += `[config] gateway.auth.token exit=${tokenResult.code}\n`;
+
+      const bindResult = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "gateway.bind", "loopback"]),
+      );
+      extra += `[config] gateway.bind=loopback exit=${bindResult.code}\n`;
 
       const proxiesResult = await runCmd(
         OPENCLAW_NODE,
